@@ -11,7 +11,7 @@ var initScene, initEventHandling, render, createTower, loader,
     block_offset = new THREE.Vector3,
     _i, _v3 = new THREE.Vector3;
 ///////////////////////////////////
-var mouse, raycaster, isShiftDown = false;
+var mouse, raycaster, isShiftDown = false, isCTRLDown = false;
 ////////////////////////////////////////
 
 initScene = function() {
@@ -222,6 +222,11 @@ initEventHandling = (function() {
 			if ( isShiftDown ) {
 				createVoxel(intersect);
 			}
+
+			else if (isCTRLDown){
+				scene.remove( intersect.object );
+				blocks.splice( blocks.indexOf( intersect.object ), 1 );
+			}
 			render();
 		}
 		//////////////////////////////////////////////////////
@@ -299,6 +304,7 @@ function onDocumentKeyDown( event ) {
 		switch( event.keyCode ) {
 
 			case 16: isShiftDown = true; break;
+			case 17: isCTRLDown = true; break;
 
 		}
 
@@ -309,6 +315,7 @@ function onDocumentKeyUp( event ) {
 	switch ( event.keyCode ) {
 
 		case 16: isShiftDown = false; break;
+		case 17: isCTRLDown = false; break;
 
 	}
 
