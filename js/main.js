@@ -1,12 +1,15 @@
-var scene = createScene();
-var camera = createCamera();
-var renderer = createRenderer()
-var axis = createAxis();
-var cube = createCube();
-var grid = createGrid();
-var plane = createPlane();
-var spotLight = createSpotlight();
-var datGUI;
+// var scene = createScene();
+// var camera = createCamera();
+// var renderer = createRenderer()
+// var axis = createAxis();
+// var cube = createCube();
+// var grid = createGrid();
+// var plane = createPlane();
+// var spotLight = createSpotlight();
+// var controls = createControls();
+// var dragControls = createDragControls();
+// var datGUI;
+
 
 function createScene(){
 	var scene = new THREE.Scene();
@@ -94,26 +97,269 @@ function createGUI(){
 	return datGUI;
 }
 
+function createControls(){
+	var controls = new THREE.TrackballControls(camera);
+	controls.rotateSpeed = 1.0;
+	controls.zoomSpeed = 1.2;
+	controls.panSpeed = 0.8;
+	controls.noZoom = false;
+	controls.noPan = false;
+	controls.staticMoving = true;
+	controls.dynamicDampingFactor = 0.3;
+	controls.target.set( 0, 0, 0 );
+	return controls;
+}
+
+function createDragControls(){
+	var dragControls = new THREE.DragControls( [cube], camera, renderer.domElement );
+	dragControls.addEventListener( 'dragstart', function ( event ) { controls.enabled = false; } );
+	dragControls.addEventListener( 'dragend', function ( event ) { controls.enabled = true; } );
+	return dragControls;
+}
+
 var guiControls = new function(){
 	this.rotationX = 0.01;
 	this.rotationY = 0.01;
 	this.rotationZ = 0.01;
 }
 
+function onDocumentMouseMove( event ) {
+
+    event.preventDefault();
+
+    if ( isMouseDown ) {
+
+        theta = - ( ( event.clientX - onMouseDownPosition.x ) * 0.5 )
+                + onMouseDownTheta;
+        phi = ( ( event.clientY - onMouseDownPosition.y ) * 0.5 )
+              + onMouseDownPhi;
+
+        phi = Math.min( 180, Math.max( 0, phi ) );
+
+        camera.position.x = radious * Math.sin( theta * Math.PI / 360 )
+                            * Math.cos( phi * Math.PI / 360 );
+        camera.position.y = radious * Math.sin( phi * Math.PI / 360 );
+        camera.position.z = radious * Math.cos( theta * Math.PI / 360 )
+                            * Math.cos( phi * Math.PI / 360 );
+        camera.updateMatrix();
+
+    }
+
+    mouse3D = projector.unprojectVector(
+        new THREE.Vector3(
+            ( event.clientX / renderer.domElement.width ) * 2 - 1,
+            - ( event.clientY / renderer.domElement.height ) * 2 + 1,
+            0.5
+        ),
+        camera
+    );
+    ray.direction = mouse3D.subSelf( camera.position ).normalize();
+
+    interact();
+    render();
+
+}
+
 
 $(document).ready(function(){
-	scene.add(axis);
-	scene.add(cube);
-	scene.add(grid);
-	scene.add(spotLight);
-	scene.add(plane);
+	 if ( ! Detector.webgl ) Detector.addGetWebGLMessage();
 
-	datGUI = createGUI();
-	datGUI.add(guiControls, 'rotationX' , 0, 1);
-	datGUI.add(guiControls, 'rotationY' , 0, 1);
-	datGUI.add(guiControls, 'rotationZ' , 0, 1);
+		var container;
+		var camera, scene, renderer;
+		var plane, cube;
+		var mouse, raycaster, isShiftDown = false;
 
-	camera.lookAt(scene.position);
-	$("#webGL-container").append(renderer.domElement);
-	render(renderer, cube, scene, camera);
+		var rollOverMesh, rollOverMaterial;
+		var cubeGeo, cubeMaterial;
+
+		var objects = [];
+
+		init();
+		render();
+
+		function init() {
+
+			container = document.createElement( 'div' );
+			document.body.appendChild( container );
+
+			camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 1, 10000 );
+			camera.position.set( 500, 800, 1300 );
+			camera.lookAt( new THREE.Vector3() );
+
+			scene = new THREE.Scene();
+
+			// roll-over helpers
+
+			rollOverGeo = new THREE.BoxGeometry( 50, 50, 50 );
+			rollOverMaterial = new THREE.MeshBasicMaterial( { color: 0xff0000, opacity: 0.5, transparent: true } );
+			rollOverMesh = new THREE.Mesh( rollOverGeo, rollOverMaterial );
+			scene.add( rollOverMesh );
+
+			// cubes
+
+			cubeGeo = new THREE.BoxGeometry( 50, 50, 50 );
+			cubeMaterial = new THREE.MeshLambertMaterial( { color: 0xfeb74c, map: new THREE.TextureLoader().load( "textures/square-outline-textured.png" ) } );
+
+			// grid
+
+			var size = 500, step = 50;
+
+			var geometry = new THREE.Geometry();
+
+			for ( var i = - size; i <= size; i += step ) {
+
+				geometry.vertices.push( new THREE.Vector3( - size, 0, i ) );
+				geometry.vertices.push( new THREE.Vector3(   size, 0, i ) );
+
+				geometry.vertices.push( new THREE.Vector3( i, 0, - size ) );
+				geometry.vertices.push( new THREE.Vector3( i, 0,   size ) );
+
+			}
+
+			var material = new THREE.LineBasicMaterial( { color: 0x000000, opacity: 0.2, transparent: true } );
+
+			var line = new THREE.LineSegments( geometry, material );
+			scene.add( line );
+
+			//
+
+			raycaster = new THREE.Raycaster();
+			mouse = new THREE.Vector2();
+
+			var geometry = new THREE.PlaneBufferGeometry( 1000, 1000 );
+			geometry.rotateX( - Math.PI / 2 );
+
+			plane = new THREE.Mesh( geometry, new THREE.MeshBasicMaterial( { visible: false } ) );
+			scene.add( plane );
+
+			objects.push( plane );
+
+			// Lights
+
+			var ambientLight = new THREE.AmbientLight( 0x606060 );
+			scene.add( ambientLight );
+
+			var directionalLight = new THREE.DirectionalLight( 0xffffff );
+			directionalLight.position.set( 1, 0.75, 0.5 ).normalize();
+			scene.add( directionalLight );
+
+			renderer = new THREE.WebGLRenderer( { antialias: true } );
+			renderer.setClearColor( 0xf0f0f0 );
+			renderer.setPixelRatio( window.devicePixelRatio );
+			renderer.setSize( window.innerWidth, window.innerHeight );
+			container.appendChild( renderer.domElement );
+
+			document.addEventListener( 'mousemove', onDocumentMouseMove, false );
+			document.addEventListener( 'mousedown', onDocumentMouseDown, false );
+			document.addEventListener( 'keydown', onDocumentKeyDown, false );
+			document.addEventListener( 'keyup', onDocumentKeyUp, false );
+
+			//
+
+			window.addEventListener( 'resize', onWindowResize, false );
+
+		}
+
+		function onWindowResize() {
+
+			camera.aspect = window.innerWidth / window.innerHeight;
+			camera.updateProjectionMatrix();
+
+			renderer.setSize( window.innerWidth, window.innerHeight );
+
+		}
+
+		function onDocumentMouseMove( event ) {
+
+			event.preventDefault();
+
+			mouse.set( ( event.clientX / window.innerWidth ) * 2 - 1, - ( event.clientY / window.innerHeight ) * 2 + 1 );
+
+			raycaster.setFromCamera( mouse, camera );
+
+			var intersects = raycaster.intersectObjects( objects );
+
+			if ( intersects.length > 0 ) {
+
+				var intersect = intersects[ 0 ];
+
+				rollOverMesh.position.copy( intersect.point ).add( intersect.face.normal );
+				rollOverMesh.position.divideScalar( 50 ).floor().multiplyScalar( 50 ).addScalar( 25 );
+
+			}
+
+			render();
+
+		}
+
+		function onDocumentMouseDown( event ) {
+
+			event.preventDefault();
+
+			mouse.set( ( event.clientX / window.innerWidth ) * 2 - 1, - ( event.clientY / window.innerHeight ) * 2 + 1 );
+
+			raycaster.setFromCamera( mouse, camera );
+
+			var intersects = raycaster.intersectObjects( objects );
+
+			if ( intersects.length > 0 ) {
+
+				var intersect = intersects[ 0 ];
+
+				// delete cube
+
+				if ( isShiftDown ) {
+
+					if ( intersect.object != plane ) {
+
+						scene.remove( intersect.object );
+
+						objects.splice( objects.indexOf( intersect.object ), 1 );
+
+					}
+
+				// create cube
+
+				} else {
+
+					var voxel = new THREE.Mesh( cubeGeo, cubeMaterial );
+					voxel.position.copy( intersect.point ).add( intersect.face.normal );
+					voxel.position.divideScalar( 50 ).floor().multiplyScalar( 50 ).addScalar( 25 );
+					scene.add( voxel );
+
+					objects.push( voxel );
+
+				}
+
+				render();
+
+			}
+
+		}
+
+		function onDocumentKeyDown( event ) {
+
+			switch( event.keyCode ) {
+
+				case 16: isShiftDown = true; break;
+
+			}
+
+		}
+
+		function onDocumentKeyUp( event ) {
+
+			switch ( event.keyCode ) {
+
+				case 16: isShiftDown = false; break;
+
+			}
+
+		}
+
+		function render() {
+
+			renderer.render( scene, camera );
+
+		}
 });
